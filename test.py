@@ -6,6 +6,7 @@ from threading import Timer
 import urllib.request, urllib.parse
 import socket,threading
 
+'''
 a=b'333'
 print(a.decode('utf-8'))
 def UdpServer():
@@ -29,7 +30,7 @@ udp.start()
 while True:
     time.sleep(1)
 
-
+'''
 
 
 
@@ -43,8 +44,7 @@ print(time.time())
 RemoteServer = 'http://test.brotherphp.com/xiangliang_web/api.php?m=index'
 CMDSEND = '&a=sendstudesmove'
 cmd = '&a=sendattendance'
-
-params_dict = {"stimestamp":int(time.time()), "mac":"C77056564291", "state":1}
+params_dict = {"stimestamp":int(time.time()), "mac":"d4:ae:68:68:64:6e", "state":1}
 params = urllib.parse.urlencode(params_dict).encode('utf-8')
 f = urllib.request.urlopen(RemoteServer+cmd, params, timeout = 20)
 jstr=f.read().decode('utf-8-sig')
