@@ -5,6 +5,16 @@ import math
 from threading import Timer
 import urllib.request, urllib.parse
 import socket,threading
+RemoteServer = 'http://xiangliang.airm2m.com/xiangliang_web/api.php?m=index'
+CMDSEND = '&a=sendstudesmove'
+CMDCHECK = '&a=sendattendance'
+UPSTATUS = '&a=basestationstatus'
+
+params_dict = {"ctime":int(time.time()), "mac":"FF:FF:FF:FF:FF:FF", "status":1}
+params = urllib.parse.urlencode(params_dict).encode('utf-8')
+f = urllib.request.urlopen(RemoteServer+UPSTATUS, params, timeout = 20)
+jstr=f.read().decode('utf-8-sig')
+print(str(jstr))
 
 '''
 a=b'333'

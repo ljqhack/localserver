@@ -27,6 +27,7 @@ DBPORT = 27017
 RemoteServer = 'http://xiangliang.airm2m.com/xiangliang_web/api.php?m=index'
 CMDSEND = '&a=sendstudesmove'
 CMDCHECK = '&a=sendattendance'
+UPSTATUS = '&a=basestationstatus'
 ATTENDANCE = 'http://xiangliang.airm2m.com/xiangliang_web/attendance/index.php'
 
 #inside
@@ -154,7 +155,7 @@ def on_connect(client, userdata, rc):
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " + "Connected with result code "+str(rc))
     client.subscribe("UPLOAD/#")
 
-VALIDRSSI = 93
+VALIDRSSI = 100
 THTIME = 50
 def on_message(client, userdata, msg):
     data_str = msg.payload.decode('utf-8-sig')
@@ -186,6 +187,7 @@ def on_message(client, userdata, msg):
             else:
                 if (cursor["first"] == SignRouterA) and (int(time.time()) - cursor["time"] < THTIME):
                     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " + data_json["data"][0]["address"] + " leave school!!")
+                    client.publish("ALAMR",'{"time":'+str(int(time.time()))+',"mac":"'+data_json["data"][0]["address"]+'","action":"leave"}')
                     SendToRemote(int(time.time()), data_json["data"][0]["address"], 1)
                     DBclient.xljy.sign_table.delete_many({"mac":data_json["data"][0]["address"]})
                 elif (cursor["first"] == SignRouterB) or (int(time.time()) - cursor["time"] > THTIME):
@@ -217,6 +219,12 @@ def on_message(client, userdata, msg):
                 log.debug("on_message:send data to remote server success")
             else:
                 log.debug("on_message:send data to remote server failure")
+        elif data_json["type"] == "heartbeat":
+            params_dict = {"ctime":data_json["routertime"], "mac":data_json["hostaddress"], "status":1}
+            params = urllib.parse.urlencode(params_dict).encode('utf-8')
+            f = urllib.request.urlopen(RemoteServer+UPSTATUS, params, timeout = 20)
+            jstr=f.read().decode('utf-8-sig')
+            log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"BaseStation Status Update,res:"+ str(jstr))
     except:
         log.debug("on_message:ERROR 001")
         log.debug(sys.exc_info())
