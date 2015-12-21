@@ -1,4 +1,0 @@
-localserver_2_v0.1_2     改变RemoteServer地址
-localserver_2_v0.1_3     realtime实时数据包中增加battery字段；增加heartbeat类型报文
-
-存在bug,MAC地址不应区分大小写

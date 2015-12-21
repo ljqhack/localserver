@@ -1,1 +1,0 @@
-start /B E:\server\localserver_mqtt_2_v0.1.exe
