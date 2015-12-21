@@ -5,7 +5,7 @@ import logging, logging.handlers
 import urllib.request, urllib.parse
 from threading import Timer
 
-Version = 0.1
+Version = 1.00
 
 LOGFILE = "E:\localserver.log"
 #logging.basicConfig(level=logging.DEBUG)
