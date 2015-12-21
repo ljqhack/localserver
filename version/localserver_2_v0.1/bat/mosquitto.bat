@@ -1,0 +1,1 @@
+start /B C:\"Program Files (x86)"\mosquitto\mosquitto.exe

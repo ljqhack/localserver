@@ -1,0 +1,4 @@
+cxfreeze localserver.py --target-dir F:\\Airm2m\\XLJY\\code\\version\\localserver
+cp local.conf F:\\Airm2m\\XLJY\\code\\version\\localserver\\local.conf
+read -n1 -p "Press any key to continue..."
+
