@@ -11,6 +11,8 @@ LOGFILE = "E:\localserver.log"
 #logging.basicConfig(level=logging.DEBUG)
 log = logging
 
+SCHOOLID = 1
+
 ISOTIMEFORMAT='%Y-%m-%d %X'
 
 MQREMOTEHOST = "121.40.198.143"
@@ -23,6 +25,7 @@ DBPORT = 27017
 RemoteServer = 'http://xiangliang.airm2m.com/xiangliang_web/api.php?m=index'
 CMDSEND = '&a=sendstudesmove'
 CMDCHECK = '&a=sendattendance'
+CMDGETNODE = '&a=getnode'
 UPSTATUS = '&a=basestationstatus'
 ATTENDANCE = 'http://xiangliang.airm2m.com/xiangliang_web/attendance/index.php'
 
@@ -48,6 +51,7 @@ def Initparam():
     global ATTENDANCE
     global log
     global LOGFILE
+    global SCHOOLID
     f = open(getpwd()+"\local.conf")
     lines = f.readlines()
     for line in lines:
@@ -63,6 +67,8 @@ def Initparam():
             ATTENDANCE = line[11:-1].strip()
         elif line[0:7] == "LOGFILE":
             LOGFILE = line.split("=")[1].strip()
+        elif line[0:8] == "schoolid":
+            SCHOOLID = int( line.split("=")[1].strip() )
     log = logging.getLogger('DEBUG')
     log.setLevel(logging.DEBUG)
     handler = logging.handlers.RotatingFileHandler(LOGFILE, maxBytes=10000000, backupCount=5)
@@ -70,8 +76,18 @@ def Initparam():
     log.debug('START DEBUG LOG')
     log.debug(SignRouterA)
     log.debug(SignRouterB)
-    log.debug("VALIDRSSI="+str(VALIDRSSI))
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Init param Success")
+
+def Initdb():
+    log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Init db")
+    DBclient = MongoClient(DBHOST, DBPORT)
+    f = urllib.request.urlopen(RemoteServer+CMDGETNODE+"&schoolid="+str(SCHOOLID), timeout = 20)
+    mac_list_str = f.read().decode('utf-8-sig')
+    print(mac_list_str)
+    mac_list_json = json.loads(mac_list_str)
+    print(mac_list_json["data"][0])
+    
+    
 def UdpServer():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Start UDP Server")
     address = ('', 9527)  
@@ -260,11 +276,15 @@ def on_message(client, userdata, msg):
     except:
         log.debug("on_message:ERROR 001")
         log.debug(sys.exc_info())
-
+        
+def restart_program():
+  python = sys.executable
+  os.execl(python, python, * sys.argv)
 def main():
     try:
         Initparam()
         time.sleep(5)
+        Initdb()
         f = urllib.request.urlopen(ATTENDANCE, timeout = 20)
         log.debug(f.read().decode('utf-8-sig'))
         udp = threading.Thread(target = UdpServer)
@@ -280,5 +300,8 @@ def main():
         client.loop_forever()
     except:
         log.debug(sys.exc_info())
-        
-main()
+if __name__ == "__main__":        
+    main()
+    log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"Someting Unexpected happened,Server will restart in 120 second!!!!!!!!!!!!!!!Please check your network,or error has been raised!!!!!!!!!!!!!!!!!!")
+    time.sleep(120)
+    restart_program()
