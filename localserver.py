@@ -34,9 +34,14 @@ SignRouterA = []
 #outside
 SignRouterB = []
 
-THRESHOLD_TIME = 2
+VALIDRSSI = 100
 
 TimerDict = {}
+TimerConstant = {}
+
+CHECK_NUMS = 10
+CHECK_TIMEOUT = 20
+TIME_THRESHOLD = 30
 
 def getpwd():
     pwd = sys.path[0]
@@ -52,6 +57,9 @@ def Initparam():
     global log
     global LOGFILE
     global SCHOOLID
+    global TIME_THRESHOLD
+    global CHECK_NUMS
+    global CHECK_TIMEOUT
     f = open(getpwd()+"\local.conf")
     lines = f.readlines()
     for line in lines:
@@ -69,6 +77,12 @@ def Initparam():
             LOGFILE = line.split("=")[1].strip()
         elif line[0:8] == "schoolid":
             SCHOOLID = int( line.split("=")[1].strip() )
+        elif line[0:14] == "TIME_THRESHOLD":
+            TIME_THRESHOLD = int( line.split("=")[1].strip() )
+        elif line[0:11] == "CHECK_NUMS":
+            CHECK_NUMS = int( line.split("=")[1].strip() )
+        elif line[0:14] == "CHECK_TIMEOUT":
+            CHECK_TIMEOUT = int( line.split("=").strip() )
     log = logging.getLogger('DEBUG')
     log.setLevel(logging.DEBUG)
     handler = logging.handlers.RotatingFileHandler(LOGFILE, maxBytes=10000000, backupCount=5)
@@ -83,10 +97,11 @@ def Initdb():
     DBclient = MongoClient(DBHOST, DBPORT)
     f = urllib.request.urlopen(RemoteServer+CMDGETNODE+"&schoolid="+str(SCHOOLID), timeout = 20)
     mac_list_str = f.read().decode('utf-8-sig')
-    print(mac_list_str)
     mac_list_json = json.loads(mac_list_str)
-    print(mac_list_json["data"][0])
-    
+    DBclient = MongoClient(DBHOST, DBPORT)
+    ret = DBclient.xljy.sign_table.drop()
+    if ret:
+        log.debug("Clear DB Collection:sign_table!")
     
 def UdpServer():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Start UDP Server")
@@ -108,7 +123,10 @@ def EveryDayTask():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"do everyday task")
     f = urllib.request.urlopen(ATTENDANCE, timeout = 20)
     log.debug(f.read().decode('utf-8-sig'))
-    clearDB = 1
+    DBclient = MongoClient(DBHOST, DBPORT)
+    ret = DBclient.xljy.sign_table.drop()
+    if ret:
+        log.debug("Clear DB Collection:sign_table!")
 def Task():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"Init EveryDayTask")
     schedule.every().day.at("00:10").do(EveryDayTask)
@@ -160,7 +178,7 @@ def isInSchool(rssi0,rssi1):
 '''
 
 def SendToRemote(routertime, mac, state):
-    log.debug("sent to remote %d %s %d", routertime, mac, state)
+    log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"sent to remote %d %s %d", routertime, mac, state)
     params_dict = {"stimestamp":int(time.time()), "mac":mac, "state":state}
     params = urllib.parse.urlencode(params_dict).encode('utf-8')
     f = urllib.request.urlopen(RemoteServer+CMDCHECK, params, timeout = 20)
@@ -176,7 +194,7 @@ def SendToRemoteCount(time, mac, count, electricity):
         log.debug("on_message:send data to remote server success")
     else:
         log.debug("on_message:send data to remote server failure")
-    
+'''    
 def CheckDo(routertime, mac, state):
     TIME_CONSTANT = 30
     if mac in TimerDict:
@@ -190,7 +208,33 @@ def CheckDo(routertime, mac, state):
     else:
         TimerDict[mac] = Timer(TIME_CONSTANT, SendToRemote,[routertime, mac, state])
         TimerDict[mac].start()
+'''
 
+def LeaveCheckFunc(mac):
+    dc = MongoClient(DBHOST, DBPORT)
+    c = dc.xljy.sign_table.find_one({"mac":mac})
+    if int(time.time()) - c["time"] > TIME_THRESHOLD:
+        SendToRemote(int(time.time()), mac, 1)
+        TimerDict.pop(mac,None)
+        TimerConstant.pop(mac,None)
+    else:
+        if TimerConstant[mac] != 0:
+            log.debug("LeaveCheckFunc: mac:%s times:%s", mac, 11 - TimerConstant[mac])
+            TimerDict[mac] = Timer(10, LeaveCheckFunc,[mac])
+            TimerDict[mac].start()
+            TimerConstant[mac] = TimerConstant[mac] - 1
+        else:
+            TimerDict.pop(mac,None)
+            TimerConstant.pop(mac,None)
+def LeaveCheck(mac):
+    if mac in TimerDict:
+        ignore = 1
+    else:
+        TimerConstant[mac] = CHECK_NUMS
+        TimerDict[mac] = Timer(CHECK_TIMEOUT, LeaveCheckFunc,[mac])
+        TimerDict[mac].start()
+        log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"leave check!")
+    
 def isInschoolMac(mac):
     for m in SignRouterA:
         if m.lower()==mac.lower():
@@ -206,8 +250,6 @@ def on_connect(client, userdata, rc):
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " + "Connected with result code "+str(rc))
     client.subscribe("UPLOAD/#")
 
-VALIDRSSI = 100
-THTIME = 50
 def on_message(client, userdata, msg):
     data_str = msg.payload.decode('utf-8-sig')
     DBclient = MongoClient(DBHOST, DBPORT)
@@ -218,34 +260,19 @@ def on_message(client, userdata, msg):
         if ( isInschoolMac(data_json["hostaddress"]) ) and (abs(data_json["rssi"]) < VALIDRSSI):
             cursor = DBclient.xljy.sign_table.find_one({"mac":data_json["data"][0]["address"]})
             if cursor == None:
-                log.debug('fist a')
-                DBclient.xljy.sign_table.insert({"mac":data_json["data"][0]["address"], "first":SignRouterA, "time":int(time.time())})
+                DBclient.xljy.sign_table.insert({"mac":data_json["data"][0]["address"], "state":1, "time":int(time.time())})
+                SendToRemote(data_json["routertime"], data_json["data"][0]["address"], 0)
             else:
-                if (cursor["first"] == SignRouterB) and (int(time.time()) - cursor["time"] < THTIME):
-                    log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " + data_json["data"][0]["address"] + " enter the school!!")
-                    SendToRemote(int(time.time()), data_json["data"][0]["address"], 0)
-                    DBclient.xljy.sign_table.delete_many({"mac":data_json["data"][0]["address"]})
-                elif (cursor["first"] == SignRouterA) or (int(time.time()) - cursor["time"] > THTIME):
-                    log.debug('up a time')
-                    res = DBclient.xljy.sign_table.update_one({"mac":data_json["data"][0]["address"]}, {"$set":{"first":SignRouterA,"time":int(time.time())}})
-                else:
-                    log.debug('ig')
+                log.debug("come from inschool basestation, update mac time!  %s", data_json["data"][0]["address"])
+                DBclient.xljy.sign_table.update_one({"mac":data_json["data"][0]["address"]}, {"$set":{"time":int(time.time())}})
         elif (isOutschoolMac(data_json["hostaddress"])) and (abs(data_json["rssi"]) < VALIDRSSI):
-            cursor = DBclient.xljy.sign_table.find_one({"mac":data_json["data"][0]["address"]})
+            cursor = DBclient.xljy.sign_table.find_one({"mac":data_json["data"][0]["address"], "state":1})
             if cursor == None:
-                log.debug('first b')
-                DBclient.xljy.sign_table.insert({"mac":data_json["data"][0]["address"], "first":SignRouterB, "time":int(time.time())})
+                log.debug("come from outschool basestation, Ignore,no sign!  %s", data_json["data"][0]["address"])
             else:
-                if (cursor["first"] == SignRouterA) and (int(time.time()) - cursor["time"] < THTIME):
-                    log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " + data_json["data"][0]["address"] + " leave school!!")
-                    client.publish("ALAMR",'{"time":'+str(int(time.time()))+',"mac":"'+data_json["data"][0]["address"]+'","action":"leave"}')
-                    SendToRemote(int(time.time()), data_json["data"][0]["address"], 1)
-                    DBclient.xljy.sign_table.delete_many({"mac":data_json["data"][0]["address"]})
-                elif (cursor["first"] == SignRouterB) or (int(time.time()) - cursor["time"] > THTIME):
-                    log.debug('ignore b time')
-                    res = DBclient.xljy.sign_table.update_one({"mac":data_json["data"][0]["address"]}, {"$set":{"first":SignRouterB,"time":int(time.time())}})
-                else:
-                    log.debug('ig')
+                DBclient.xljy.sign_table.update_one({"mac":data_json["data"][0]["address"]}, {"$set":{"time":int(time.time())}})
+                LeaveCheck(data_json["data"][0]["address"])
+                log.debug("come from outschool basestation, will check leave!  %s", data_json["data"][0]["address"])
         if data_json["type"] == "real_time":
             c = DBclient.xljy.realtime.find_one(data_json["data"][0])
             if c == None:
