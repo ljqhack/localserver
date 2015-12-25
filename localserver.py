@@ -1,6 +1,6 @@
 import paho.mqtt.client as mqtt
 from pymongo import MongoClient
-import json, time, sys, math, threading, schedule, socket, os
+import json, time,datetime, sys, math, threading, schedule, socket, os, traceback
 import logging, logging.handlers
 import urllib.request, urllib.parse
 from threading import Timer
@@ -10,6 +10,7 @@ Version = 1.00
 LOGFILE = "E:\localserver.log"
 #logging.basicConfig(level=logging.DEBUG)
 log = logging
+HANDLE_LOG = None
 
 SCHOOLID = 1
 
@@ -61,6 +62,7 @@ def Initparam():
     global CHECK_NUMS
     global CHECK_TIMEOUT
     f = open(getpwd()+"\local.conf")
+    HANDLE_LOG = f
     lines = f.readlines()
     for line in lines:
         if line[0:11] == "SignRouterA":
@@ -102,6 +104,9 @@ def Initdb():
     ret = DBclient.xljy.sign_table.drop()
     if ret:
         log.debug("Clear DB Collection:sign_table!")
+    else:
+        log.debug("Clear DB sign_table error!")
+    ret = DBclient.xljy.realtime.delete_many({"time":{"$lte":int(time.mktime(datetime.date.today().timetuple())) - 86400 } })
     
 def UdpServer():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Start UDP Server")
@@ -192,8 +197,10 @@ def SendToRemoteCount(time, mac, count, electricity):
     jstr=f.read().decode('utf-8-sig')
     if str(jstr) == '{"state":"success"}':
         log.debug("on_message:send data to remote server success")
+        return True
     else:
         log.debug("on_message:send data to remote server failure")
+        return False
 '''    
 def CheckDo(routertime, mac, state):
     TIME_CONSTANT = 30
@@ -274,15 +281,27 @@ def on_message(client, userdata, msg):
                 LeaveCheck(data_json["data"][0]["address"])
                 log.debug("come from outschool basestation, will check leave!  %s", data_json["data"][0]["address"])
         if data_json["type"] == "real_time":
-            c = DBclient.xljy.realtime.find_one(data_json["data"][0])
-            if c == None:
-                DBclient.xljy.realtime.insert(data_json["data"][0])
-                log.debug("on_message:insert a realtime data to database")
-                SendToRemoteCount(data_json["data"][0]["time"], data_json["data"][0]["address"], data_json["data"][0]["counts1"], data_json["data"][0]["battery"])
-                SendToRemoteCount(data_json["data"][0]["time"], data_json["data"][0]["address"], data_json["data"][0]["counts2"], data_json["data"][0]["battery"])
-                SendToRemoteCount(data_json["data"][0]["time"], data_json["data"][0]["address"], data_json["data"][0]["counts3"], data_json["data"][0]["battery"])
-                SendToRemoteCount(data_json["data"][0]["time"], data_json["data"][0]["address"], data_json["data"][0]["counts4"], data_json["data"][0]["battery"])
-                SendToRemoteCount(data_json["data"][0]["time"], data_json["data"][0]["address"], data_json["data"][0]["counts5"], data_json["data"][0]["battery"])
+            c = DBclient.xljy.realtime.find({"mac":data_json["data"][0]["address"],"time":{"$lte":data_json["data"][0]["time"], "$gte":(data_json["data"][0]["time"]-240) }})
+            c_list = list(c)
+            if c.count() == 5:
+                nothingtoupdate = 1
+            else:
+                upload_flag = True
+                i = 5
+                t = 0
+                cc = None
+                for t in range(data_json["data"][0]["time"]-240,data_json["data"][0]["time"]+60,60):
+                    for cc in c_list:
+                        if cc["time"] == t:
+                            upload_flag = False
+                            break;
+                        else:
+                            upload_flag = True
+                    if upload_flag:
+                        if SendToRemoteCount(t, data_json["data"][0]["address"], data_json["data"][0]["counts"+str(i)], data_json["data"][0]["battery"]):
+                            log.debug("insert realtime mac:%s  time=%d", data_json["data"][0]["address"], t)
+                            DBclient.xljy.realtime.insert({"mac":data_json["data"][0]["address"], "time":t})
+                    i = i - 1
         elif data_json["type"] == "history":
             DBclient.xljy.history.insert(data_json["data"][0])
             log.debug("on_message:insert a history data to database")
@@ -302,6 +321,7 @@ def on_message(client, userdata, msg):
             log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"BaseStation Status Update,res:"+ str(jstr))
     except:
         log.debug("on_message:ERROR 001")
+        #traceback.print_exception(*sys.exc_info(), file=HANDLE_LOG)
         log.debug(sys.exc_info())
         
 def restart_program():
@@ -310,7 +330,7 @@ def restart_program():
 def main():
     try:
         Initparam()
-        time.sleep(5)
+        #time.sleep(5)
         Initdb()
         f = urllib.request.urlopen(ATTENDANCE, timeout = 20)
         log.debug(f.read().decode('utf-8-sig'))
@@ -329,6 +349,6 @@ def main():
         log.debug(sys.exc_info())
 if __name__ == "__main__":        
     main()
-    log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"Someting Unexpected happened,Server will restart in 120 second!!!!!!!!!!!!!!!Please check your network,or error has been raised!!!!!!!!!!!!!!!!!!")
+    log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"Someting Unexpected happened,Server will restart in 120 seconds!!!!!!!!!!!!!!!Please check your network,or error has been raised!!!!!!!!!!!!!!!!!!")
     time.sleep(120)
     restart_program()
