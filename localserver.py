@@ -1,6 +1,8 @@
+#coding=utf-8
 import paho.mqtt.client as mqtt
 from pymongo import MongoClient
 import json, time,datetime, sys, math, threading, schedule, socket, os, traceback
+import codecs
 import logging, logging.handlers
 import urllib.request, urllib.parse
 from threading import Timer
@@ -10,7 +12,6 @@ Version = 1.00
 LOGFILE = "E:\localserver.log"
 #logging.basicConfig(level=logging.DEBUG)
 log = logging
-HANDLE_LOG = None
 
 SCHOOLID = 1
 
@@ -61,8 +62,7 @@ def Initparam():
     global TIME_THRESHOLD
     global CHECK_NUMS
     global CHECK_TIMEOUT
-    f = open(getpwd()+"\local.conf")
-    HANDLE_LOG = f
+    f = codecs.open(getpwd()+"\local.conf","r","utf-8")
     lines = f.readlines()
     for line in lines:
         if line[0:11] == "SignRouterA":
@@ -105,7 +105,7 @@ def Initdb():
     if ret:
         log.debug("Clear DB Collection:sign_table!")
     else:
-        log.debug("Clear DB sign_table error!")
+        log.debug("Clear DB sign_table:false!")
     ret = DBclient.xljy.realtime.delete_many({"time":{"$lte":int(time.mktime(datetime.date.today().timetuple())) - 86400 } })
     
 def UdpServer():
@@ -131,7 +131,10 @@ def EveryDayTask():
     DBclient = MongoClient(DBHOST, DBPORT)
     ret = DBclient.xljy.sign_table.drop()
     if ret:
-        log.debug("Clear DB Collection:sign_table!")
+        log.debug("EveryDayTask: Clear DB Collection,sign_table!")
+    ret = DBclient.xljy.realtime.delete_many({"time":{"$lte":int(time.mktime(datetime.date.today().timetuple())) - 86400 } })
+    if ret:
+        log.debug("EveryDayTask: Clear DB Collection,realtime!")
 def Task():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"Init EveryDayTask")
     schedule.every().day.at("00:10").do(EveryDayTask)
