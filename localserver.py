@@ -123,6 +123,9 @@ def Initdb():
     ret = DBclient.xljy.realtime.delete_many({"time":{"$lte":int(time.mktime(datetime.date.today().timetuple()))} })
     if ret:
         log.debug("Initdb: Clear DB Collection,realtime!")
+    ret = DBclient.xljy.history.delete_many({"start":{"$lte":int(time.mktime(datetime.date.today().timetuple())) - 24*60*60*7} })
+    if ret:
+        log.debug("Initdb: Clear DB Collection,history!")
     
 def UdpServer():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Start UDP Server")
@@ -153,20 +156,20 @@ def EveryDayTask():
         for t_m in CursorMax_list:
             time_max_before = t_m["time_max"]
             #insert history
-            history = DBclient.xljy.history.insert({"mac":t_m["mac"],"start":time_max_before + 60,"end":int(time.mktime(datetime.date.today().timetuple())) - 60})
+            history = DBclient.xljy.history.insert({"mac":t_m["_id"],"start":time_max_before + 60,"end":int(time.mktime(datetime.date.today().timetuple())) - 60})
     mac = None
     mac_list = list(DBclient.xljy.mac_list.find({"Is":1}))[0]["mac_list"]
     for mac in mac_list:
         if DBclient.xljy.sign_table.find({"mac":mac}).count() == 0:
             #insert history
             history = DBclient.xljy.history.insert({"mac":mac,"start":int(time.mktime(datetime.date.today().timetuple()))-86400,"end":int(time.mktime(datetime.date.today().timetuple())) - 60})
-    ret = DBclient.xljy.history.delete_many({"time":{"$lte":int(time.mktime(datetime.date.today().timetuple())) - 86400*7 } })
+    ret = DBclient.xljy.history.delete_many({"start":{"$lte":int(time.mktime(datetime.date.today().timetuple())) - 86400*7 } })
     if ret:
         log.debug("EveryDayTask: Clear DB Collection,history!")
     ret = DBclient.xljy.sign_table.drop()
     if ret:
         log.debug("EveryDayTask: Clear DB Collection,sign_table!")
-    ret = DBclient.xljy.realtime.delete_many({"time":{"$lte":int(time.mktime(datetime.date.today().timetuple())) - 86400 } })
+    ret = DBclient.xljy.realtime.delete_many({"time":{"$lte":int(time.mktime(datetime.date.today().timetuple())) } })
     if ret:
         log.debug("EveryDayTask: Clear DB Collection,realtime!")
 def Task():
@@ -343,11 +346,11 @@ def on_message(client, userdata, msg):
                 if c_count == 0:
                     CursorMax = DBclient.xljy.realtime.aggregate([{"$match":{"mac":data_json["data"][0]["address"]}},{"$group":{"_id":"$mac","time_max":{"$max":"$time"}}}])
                     CursorMax_list = list(CursorMax)
-                    time_max_before = CursorMax_list[0]["time_max"]
-                    if ( len(CursorMax_list) != 0 ) and ( time_max_before != data_json["data"][0]["time"] - 300 ):
-                        #insert history
-                        history = DBclient.xljy.history.insert({"mac":data_json["data"][0]["address"],"start":time_max_before + 60,"end":data_json["data"][0]["time"] - 300})
-                            
+                    if len(CursorMax_list) != 0:
+                        time_max_before = CursorMax_list[0]["time_max"]
+                        if ( time_max_before != (data_json["data"][0]["time"] - 300) ):
+                            #insert history
+                            history = DBclient.xljy.history.insert({"mac":data_json["data"][0]["address"],"start":time_max_before + 60,"end":data_json["data"][0]["time"] - 300})
                 if c_count == 5:
                     nothingtoupdate = 1
                 else:
@@ -387,16 +390,14 @@ def on_message(client, userdata, msg):
                 log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"BaseStation Status Update,res:"+ str(jstr))
         except:
             log.debug("on_message:ERROR 002")
-            #traceback.print_exception(*sys.exc_info(), file=HANDLE_LOG)
             log.debug(sys.exc_info())
-        
 def restart_program():
   python = sys.executable
   os.execl(python, python, * sys.argv)
 def main():
     try:
         Initparam()
-        time.sleep(5)
+        #time.sleep(5)
         Initdb()
         f = urllib.request.urlopen(ATTENDANCE, timeout = 20)
         log.debug(f.read().decode('utf-8-sig'))
