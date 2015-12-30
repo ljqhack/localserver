@@ -7,9 +7,10 @@ REALTIME = "UPLOAD/REALTIME"
 
 INSCHOOL_HOST = "06:0C:43:76:20:08"
 OUTSCHOOL_HOST = "06:0C:43:76:20:0c"
-NORMAL_HOST = "FF:0C:43:76:20:0c"
+NORMAL_HOST = "DF:0C:43:76:20:0c"
 
-WRISTBAND = "11:11:11:11:11:12"
+WRISTBAND = "F1:11:11:11:11:12"
+time_wrist = 1451474100
 
 def realtime_pack(hostaddress, wristaddress, t):
     msg_realtime = {}
@@ -25,7 +26,6 @@ def TeCase1():
     client = mqtt.Client()
     client.connect(MQHOST, MQPORT, 60)
     client.loop_start()
-    time_wrist = 1451474100
     #normal_host
     msg = realtime_pack(NORMAL_HOST, WRISTBAND, time_wrist)
     client.publish(REALTIME, msg)
@@ -46,10 +46,27 @@ def TeCase1():
     msg = realtime_pack(INSCHOOL_HOST, WRISTBAND, time_wrist+1320)
     client.publish(REALTIME, msg)
     client.publish(REALTIME, msg)
+
+#sign and leave test
+def TeCase2():
+    client = mqtt.Client()
+    client.connect(MQHOST, MQPORT, 60)
+    client.loop_start()
+    i = 0
+    #for i in range(1, 101, 1):
+    #    msg = realtime_pack(INSCHOOL_HOST, WRISTBAND+ " " +str(i), time_wrist)
+    #    client.publish(REALTIME, msg)
+    #time.sleep(40)
+    for i in range(1, 100, 1):
+        msg = realtime_pack(OUTSCHOOL_HOST, WRISTBAND+ " " +str(i), time_wrist)
+        print(msg)
+        client.publish(REALTIME, msg)
+        time.sleep(0.01)
+        
     
 def TestMain():
     print("start test localserver!")
-    TeCase1()
+    TeCase2()
     print("end test!!")
 
 
