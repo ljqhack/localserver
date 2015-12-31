@@ -106,7 +106,7 @@ def Initdb():
     f = urllib.request.urlopen(RemoteServer+CMDGETNODE+"&schoolid="+str(SCHOOLID), timeout = 20)
     mac_list_str = f.read().decode('utf-8-sig')
     mac_list_json = json.loads(mac_list_str)
-    print(mac_list_json)
+    #print(mac_list_json)
     DBclient = MongoClient(DBHOST, DBPORT)
     ret = DBclient.xljy.mac_list.find()
     if len(list(ret)) == 1:
@@ -445,7 +445,7 @@ def restart_program():
 def main():
     try:
         Initparam()
-        #time.sleep(5)
+        time.sleep(5)
         Initdb()
         f = urllib.request.urlopen(ATTENDANCE, timeout = 20)
         log.debug(f.read().decode('utf-8-sig'))
