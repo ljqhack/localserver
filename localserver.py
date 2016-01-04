@@ -431,7 +431,7 @@ def on_message(client, userdata, msg):
                         else:
                             log.debug("on_message:send history to remote server failure!!!")
             elif data_json["type"] == "heartbeat":
-                params_dict = {"ctime":data_json["routertime"], "mac":data_json["hostaddress"], "status":1}
+                params_dict = {"ctime":data_json["routertime"], "mac":data_json["hostaddress"], "status":1, "schoolid":SCHOOLID}
                 params = urllib.parse.urlencode(params_dict).encode('utf-8')
                 f = urllib.request.urlopen(RemoteServer+UPSTATUS, params, timeout = 20)
                 jstr=f.read().decode('utf-8-sig')
