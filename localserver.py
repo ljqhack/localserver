@@ -35,19 +35,22 @@ ATTENDANCE = 'http://xiangliang.airm2m.com/xiangliang_web/attendance/index.php'
 #inside
 SignRouterA = []
 #outside
-SignRouterB = []
+#SignRouterB = []
 
-VALIDRSSI_OUT = 100
+#VALIDRSSI_OUT = 100
 VALIDRSSI_IN = 100
 
-TimerDict = {}
-TimerConstant = {}
+#TimerDict = {}
+#TimerConstant = {}
 
-CHECK_NUMS = 10
-CHECK_TIMEOUT = 20
-TIME_THRESHOLD = 30
+#CHECK_NUMS = 10
+#CHECK_TIMEOUT = 20
+#TIME_THRESHOLD = 30
 
 CalHistory = {}
+
+CHECK_TIMEOUT = 60
+TIME_THRESHOLD = 30
 
 def getpwd():
     pwd = sys.path[0]
@@ -56,26 +59,22 @@ def getpwd():
     return pwd
 def Initparam():
     global SignRouterA
-    global SignRouterB
-    global VALIDRSSI_OUT
+    #global SignRouterB
+    #global VALIDRSSI_OUT
     global VALIDRSSI_IN
     global RemoteServer
     global ATTENDANCE
     global log
     global LOGFILE
     global SCHOOLID
-    global TIME_THRESHOLD
-    global CHECK_NUMS
-    global CHECK_TIMEOUT
+    #global TIME_THRESHOLD
+    #global CHECK_NUMS
+    #global CHECK_TIMEOUT
     f = codecs.open(getpwd()+"\local.conf","r","utf-8")
     lines = f.readlines()
     for line in lines:
         if line[0:11] == "SignRouterA":
             SignRouterA.append(line.split("=")[1].strip())
-        elif line[0:11] == "SignRouterB":
-            SignRouterB.append(line.split("=")[1].strip())
-        elif line[0:13] == "VALIDRSSI_OUT":
-            VALIDRSSI_OUT = int(line.split("=")[1].strip())
         elif line[0:12] == "VALIDRSSI_IN":
             VALIDRSSI_IN = int(line.split("=")[1].strip())
         elif line[0:12] == "RemoteServer":
@@ -86,27 +85,21 @@ def Initparam():
             LOGFILE = line.split("=")[1].strip()
         elif line[0:8] == "schoolid":
             SCHOOLID = int( line.split("=")[1].strip() )
-        elif line[0:14] == "TIME_THRESHOLD":
-            TIME_THRESHOLD = int( line.split("=")[1].strip() )
-        elif line[0:11] == "CHECK_NUMS":
-            CHECK_NUMS = int( line.split("=")[1].strip() )
-        elif line[0:14] == "CHECK_TIMEOUT":
-            CHECK_TIMEOUT = int( line.split("=").strip() )
     log = logging.getLogger('DEBUG')
     log.setLevel(logging.DEBUG)
     handler = logging.handlers.RotatingFileHandler(LOGFILE, maxBytes=10000000, backupCount=5)
     log.addHandler(handler)
     log.debug('START DEBUG LOG')
     log.debug(SignRouterA)
-    log.debug(SignRouterB)
+    #log.debug(SignRouterB)
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Init param Success")
 
 def Initdb():
+    #1'Get students list from remote server,and update mac_list in Mongodb
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Init db")
     f = urllib.request.urlopen(RemoteServer+CMDGETNODE+"&schoolid="+str(SCHOOLID), timeout = 20)
     mac_list_str = f.read().decode('utf-8-sig')
     mac_list_json = json.loads(mac_list_str)
-    #print(mac_list_json)
     DBclient = MongoClient(DBHOST, DBPORT)
     ret = DBclient.xljy.mac_list.find()
     if len(list(ret)) == 1:
@@ -114,16 +107,17 @@ def Initdb():
         DBclient.xljy.mac_list.update_one({"Is":1},{"$set":{"mac_list":mac_list_json["data"]} })
     else:
         DBclient.xljy.mac_list.insert({"Is":1, "mac_list":mac_list_json["data"]})
-    #xx = DBclient.xljy.mac_list.find({"Is":1})
-    #print(list(xx)[0]["mac_list"])
+    #2'Clear sign_table collection,delete old document 
     ret = DBclient.xljy.sign_table.delete_many({"time":{"$lte":int(time.mktime(datetime.date.today().timetuple()))} })
     if ret:
         log.debug("Initdb: Clear DB Collection,sign_table!")
     else:
         log.debug("Initdb: Clear DB sign_table,false!")
+    #3'Clear realtime collection,delete old document 
     ret = DBclient.xljy.realtime.delete_many({"time":{"$lte":int(time.mktime(datetime.date.today().timetuple()))} })
     if ret:
         log.debug("Initdb: Clear DB Collection,realtime!")
+    #4'Clear history collection,delete old document which time is 7 days ago
     ret = DBclient.xljy.history.delete_many({"start":{"$lte":int(time.mktime(datetime.date.today().timetuple())) - 24*60*60*7} })
     if ret:
         log.debug("Initdb: Clear DB Collection,history!")
@@ -146,10 +140,11 @@ def UdpServer():
 
 def EveryDayTask():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"do everyday task")
+    #1'Attendance interface
     f = urllib.request.urlopen(ATTENDANCE, timeout = 20)
     log.debug(f.read().decode('utf-8-sig'))
     DBclient = MongoClient(DBHOST, DBPORT)
-    ######handle history table#######
+    #2'Handle history table
     CursorMax = DBclient.xljy.realtime.aggregate([{"$group":{"_id":"$mac","time_max":{"$max":"$time"}}}])
     CursorMax_list = list(CursorMax)
     if len(CursorMax_list) != 0:
@@ -164,6 +159,7 @@ def EveryDayTask():
         if DBclient.xljy.sign_table.find({"mac":mac}).count() == 0:
             #insert history
             history = DBclient.xljy.history.insert({"mac":mac,"start":int(time.mktime(datetime.date.today().timetuple()))-86400,"starttoend":[int(time.mktime(datetime.date.today().timetuple()))-86400,int(time.mktime(datetime.date.today().timetuple())) - 60]})
+    #3'Clear history/sign_table/realtime
     ret = DBclient.xljy.history.delete_many({"start":{"$lte":int(time.mktime(datetime.date.today().timetuple())) - 86400*7 } })
     if ret:
         log.debug("EveryDayTask: Clear DB Collection,history!")
@@ -173,9 +169,22 @@ def EveryDayTask():
     ret = DBclient.xljy.realtime.delete_many({"time":{"$lte":int(time.mktime(datetime.date.today().timetuple())) } })
     if ret:
         log.debug("EveryDayTask: Clear DB Collection,realtime!")
+def CheckLeaveTask():
+    log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"CheckLeaveTask")
+    dbc = MongoClient(DBHOST, DBPORT)
+    sign = dbc.xljy.sign_table.find()
+    sign_list = list(sign)
+    cur = None
+    for cur in sign_list:
+        now = int(time.time())
+        if now - cur["time"] > TIME_THRESHOLD:
+            SendToRemote(now, cur["mac"], 1)
+            dbc.xljy.sign_table.delete_one({"mac":cur["mac"]})
+            log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +  "%s leave school",cur["mac"])
 def Task():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"Init EveryDayTask")
     schedule.every().day.at("00:10").do(EveryDayTask)
+    schedule.every(CHECK_TIMEOUT).seconds.do(CheckLeaveTask)
     while True:
         schedule.run_pending()
         time.sleep(1)
@@ -225,7 +234,7 @@ def isInSchool(rssi0,rssi1):
 
 def SendToRemote(routertime, mac, state):
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"sent to remote %d %s %d", routertime, mac, state)
-    params_dict = {"stimestamp":int(time.time()), "mac":mac, "state":state}
+    params_dict = {"stimestamp":routertime, "mac":mac, "state":state}
     params = urllib.parse.urlencode(params_dict).encode('utf-8')
     f = urllib.request.urlopen(RemoteServer+CMDCHECK, params, timeout = 20)
     jstr=f.read().decode('utf-8-sig')
@@ -304,7 +313,7 @@ def gethistory_pack(watchaddress,history):
     return json_param
 def historytoremote_pack(mac, start, end, data):
     if len(data) != ((end - start)/60 + 1):
-        log.debug("history package is bad")
+        log.debug("history package is bad!!")
         return False
     param = []
     t = 0
@@ -344,13 +353,19 @@ def on_message(client, userdata, msg):
             data_json = json.loads(data_str)
             if (data_json["type"] == "real_time"):
                 timestamp_today = int(time.mktime(datetime.date.today().timetuple()))
+                hostaddress = data_json["hostaddress"]
+                rssi = data_json["rssi"]
                 mac = data_json["data"][0]["address"]
                 time_wrist = data_json["data"][0]["time"]
-                if ( isInschoolMac(data_json["hostaddress"]) ) and (abs(data_json["rssi"]) < VALIDRSSI_IN):
-                    cursor = DBclient.xljy.sign_table.find_one({"mac":mac})
+                data_msg = data_json["data"][0]
+                SignFlag = False
+                if ( isInschoolMac( hostaddress ) ) and (abs(rssi) < VALIDRSSI_IN):
+                    fil = {"mac":mac}
+                    up = {"$set":{"time":int(time.time()), "state":1}}
+                    cursor = DBclient.xljy.sign_table.find_one_and_update(fil, up, upsert = True)
+                    SignFlag = True
                     if cursor == None:
-                        DBclient.xljy.sign_table.insert({"mac":mac, "state":1, "time":int(time.time())})
-                        SendToRemote(data_json["routertime"], mac, 0)
+                        SendToRemote(int(time.time()), mac, 0)
                         #insert history
                         CursorMin = DBclient.xljy.realtime.aggregate([{"$match":{"mac":mac, "time":{"$gte":timestamp_today} }},{"$group":{"_id":"$mac","time_min":{"$min":"$time"}}}])
                         CursorMin_list = list(CursorMin)
@@ -368,50 +383,42 @@ def on_message(client, userdata, msg):
                         json_data = gethistory_pack(mac, dtob)
                         log.debug("get history: %s", json_data)
                         client.publish("GETHISTORY", json_data)
-                elif (isOutschoolMac(data_json["hostaddress"])) and (abs(data_json["rssi"]) < VALIDRSSI_OUT):
-                    cursor = DBclient.xljy.sign_table.find_one({"mac":mac, "state":1})
-                    if cursor == None:
-                        log.debug("come from outschool basestation, Ignore,no sign!  %s", mac)
-                    else:
-                        DBclient.xljy.sign_table.update_one({"mac":mac}, {"$set":{"time":int(time.time())}})
-                        LeaveCheck(mac)
-                        log.debug("come from outschool basestation, will check leave!  %s", mac)
-                if ( not isOutschoolMac(data_json["hostaddress"]) ):
-                    ###update sign_table time
-                    cursor = DBclient.xljy.sign_table.find_one_and_update({"mac":mac}, {"$set":{"time":int(time.time())}})
+                else:
+                    fil = {"mac":mac, "state":1}
+                    up = {"$set":{"time":int(time.time())}}
+                    cursor = DBclient.xljy.sign_table.find_one_and_update(fil, up)
                     if cursor != None:
-                        log.debug("come from inschool/normal basestation, update mac time!  %s", mac)
-                    ########################    
-                    c = DBclient.xljy.realtime.find({"mac":mac,"time":{"$lte":time_wrist, "$gte":(time_wrist-240) }})
-                    c_list = list(c)
-                    c_count = c.count()
-                    if c_count == 0:
-                        CursorMax = DBclient.xljy.realtime.aggregate([{"$match":{"mac":mac}},{"$group":{"_id":"$mac","time_max":{"$max":"$time"}}}])
-                        CursorMax_list = list(CursorMax)
-                        if len(CursorMax_list) != 0:
-                            time_max_before = CursorMax_list[0]["time_max"]
-                            if ( time_max_before != (time_wrist - 300) ):
-                                #insert history
-                                history = DBclient.xljy.history.insert({"mac":mac,"start":time_max_before + 60,"starttoend":[time_max_before + 60,time_wrist - 300]})
-                    if c_count == 5:
-                        nothingtoupdate = 1
-                    else:
-                        upload_flag = True
-                        i = 5
-                        t = 0
-                        cc = None
-                        for t in range(time_wrist-240,time_wrist+60,60):
-                            for cc in c_list:
-                                if cc["time"] == t:
-                                    upload_flag = False
-                                    break;
-                                else:
-                                    upload_flag = True
-                            if upload_flag:
-                                if SendToRemoteCount(t, mac, data_json["data"][0]["counts"+str(i)], data_json["data"][0]["battery"]):
-                                    log.debug("insert realtime mac:%s  time=%d", mac, t)
-                                    DBclient.xljy.realtime.insert({"mac":mac, "time":t})
-                            i = i - 1
+                        SignFlag = True      
+                c = DBclient.xljy.realtime.find({"mac":mac,"time":{"$lte":time_wrist, "$gte":(time_wrist-240) }})
+                c_list = list(c)
+                c_count = c.count()
+                if c_count == 0:
+                    CursorMax = DBclient.xljy.realtime.aggregate([{"$match":{"mac":mac}},{"$group":{"_id":"$mac","time_max":{"$max":"$time"}}}])
+                    CursorMax_list = list(CursorMax)
+                    if len(CursorMax_list) != 0:
+                        time_max_before = CursorMax_list[0]["time_max"]
+                        if ( time_max_before != (time_wrist - 300) ):
+                            #insert history
+                            history = DBclient.xljy.history.insert({"mac":mac,"start":time_max_before + 60,"starttoend":[time_max_before + 60,time_wrist - 300]})
+                if c_count == 5:
+                    nothingtoupdate = 1
+                else:
+                    upload_flag = True
+                    i = 5
+                    t = 0
+                    cc = None
+                    for t in range(time_wrist-240,time_wrist+60,60):
+                        for cc in c_list:
+                            if cc["time"] == t:
+                                upload_flag = False
+                                break;
+                            else:
+                                upload_flag = True
+                        if upload_flag:
+                            if SendToRemoteCount(t, mac, data_msg["counts"+str(i)], data_msg["battery"]):
+                                log.debug("insert realtime mac:%s  time=%d", mac, t)
+                                DBclient.xljy.realtime.insert({"mac":mac, "time":t})
+                        i = i - 1
 
             elif data_json["type"] == "history":
                 mac = data_json["watchaddress"]
