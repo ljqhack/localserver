@@ -67,12 +67,13 @@ def Initparam():
     global log
     global LOGFILE
     global SCHOOLID
-    #global TIME_THRESHOLD
+    global TIME_THRESHOLD
     #global CHECK_NUMS
-    #global CHECK_TIMEOUT
+    global CHECK_TIMEOUT
     f = codecs.open(getpwd()+"/local.conf","r","utf-8")
     lines = f.readlines()
     for line in lines:
+        print(line)
         if line[0:11] == "SignRouterA":
             SignRouterA.append(line.split("=")[1].strip())
         elif line[0:12] == "VALIDRSSI_IN":
@@ -87,8 +88,8 @@ def Initparam():
             SCHOOLID = int( line.split("=")[1].strip() )
         elif line[0:14] == "TIME_THRESHOLD":
             TIME_THRESHOLD = int( line.split("=")[1].strip() )
-        elif line[0:14] == "CHECK_TIMEOUT":
-            CHECK_TIMEOUT = int( line.split("=").strip() )
+        elif line[0:13] == "CHECK_TIMEOUT":
+            CHECK_TIMEOUT = int( line.split("=")[1].strip() )
     log = logging.getLogger('DEBUG')
     log.setLevel(logging.DEBUG)
     handler = logging.handlers.RotatingFileHandler(LOGFILE, maxBytes=10000000, backupCount=5)
@@ -97,7 +98,6 @@ def Initparam():
     log.debug(SignRouterA)
     #log.debug(SignRouterB)
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Init param Success")
-    print(TIME_THRESHOLD)
 
 def Initdb():
     #1'Get students list from remote server,and update mac_list in Mongodb
