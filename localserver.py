@@ -7,7 +7,7 @@ import logging, logging.handlers
 import urllib.request, urllib.parse
 from threading import Timer
 
-Version = 1.00
+Version = 1.02
 
 LOGFILE = "E:\localserver.log"
 #logging.basicConfig(level=logging.DEBUG)
@@ -70,7 +70,7 @@ def Initparam():
     #global TIME_THRESHOLD
     #global CHECK_NUMS
     #global CHECK_TIMEOUT
-    f = codecs.open(getpwd()+"\local.conf","r","utf-8")
+    f = codecs.open(getpwd()+"/local.conf","r","utf-8")
     lines = f.readlines()
     for line in lines:
         if line[0:11] == "SignRouterA":
@@ -85,6 +85,10 @@ def Initparam():
             LOGFILE = line.split("=")[1].strip()
         elif line[0:8] == "schoolid":
             SCHOOLID = int( line.split("=")[1].strip() )
+        elif line[0:14] == "TIME_THRESHOLD":
+            TIME_THRESHOLD = int( line.split("=")[1].strip() )
+        elif line[0:14] == "CHECK_TIMEOUT":
+            CHECK_TIMEOUT = int( line.split("=").strip() )
     log = logging.getLogger('DEBUG')
     log.setLevel(logging.DEBUG)
     handler = logging.handlers.RotatingFileHandler(LOGFILE, maxBytes=10000000, backupCount=5)
@@ -93,6 +97,7 @@ def Initparam():
     log.debug(SignRouterA)
     #log.debug(SignRouterB)
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Init param Success")
+    print(TIME_THRESHOLD)
 
 def Initdb():
     #1'Get students list from remote server,and update mac_list in Mongodb
@@ -172,14 +177,16 @@ def EveryDayTask():
 def CheckLeaveTask():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"CheckLeaveTask")
     dbc = MongoClient(DBHOST, DBPORT)
-    sign = dbc.xljy.sign_table.find()
+    sign = dbc.xljy.sign_table.find({"state":1})
     sign_list = list(sign)
     cur = None
     for cur in sign_list:
         now = int(time.time())
         if now - cur["time"] > TIME_THRESHOLD:
             SendToRemote(now, cur["mac"], 1)
-            dbc.xljy.sign_table.delete_one({"mac":cur["mac"]})
+            fil = {"mac":cur["mac"]}
+            up = {"$set":{"time":int(time.time()), "state":0}}
+            dbc.xljy.sign_table.find_one_and_update(fil, up)
             log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +  "%s leave school",cur["mac"])
 def Task():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"Init EveryDayTask")
@@ -365,6 +372,7 @@ def on_message(client, userdata, msg):
                     cursor = DBclient.xljy.sign_table.find_one_and_update(fil, up, upsert = True)
                     SignFlag = True
                     if cursor == None:
+                        log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +  "%s enter school",mac)
                         SendToRemote(int(time.time()), mac, 0)
                         #insert history
                         CursorMin = DBclient.xljy.realtime.aggregate([{"$match":{"mac":mac, "time":{"$gte":timestamp_today} }},{"$group":{"_id":"$mac","time_min":{"$min":"$time"}}}])
@@ -383,6 +391,10 @@ def on_message(client, userdata, msg):
                         json_data = gethistory_pack(mac, dtob)
                         log.debug("get history: %s", json_data)
                         client.publish("GETHISTORY", json_data)
+                    if cursor != None:
+                        if cursor["state"] == 0:
+                            log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +  "%s enter school ~~~",mac)
+                            SendToRemote(int(time.time()), mac, 0)
                 else:
                     fil = {"mac":mac, "state":1}
                     up = {"$set":{"time":int(time.time())}}

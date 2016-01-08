@@ -9,7 +9,7 @@ DBPORT = 27017
 REALTIME = "UPLOAD/REALTIME"
 HISTORY = "UPLOAD/HISTORY"
 
-INSCHOOL_HOST = "06:0C:43:76:20:06"
+INSCHOOL_HOST = "06:0C:43:76:20:08"
 OUTSCHOOL_HOST = "06:0C:43:76:20:0c"
 NORMAL_HOST = "DF:0C:43:76:20:0c"
 WRISTBAND = "F1:11:11:11:11:12"
@@ -71,14 +71,14 @@ def TeCase2():
     client.loop_start()
     i = 0
     j = 0
-    for j in range(1, 61, 1):
-        for i in range(1, 50, 1):
+    for j in range(1, 5, 1):
+        for i in range(1, 5, 1):
             msg = realtime_pack(INSCHOOL_HOST, WRISTBAND+ " " +str(i), int(time.time()))
             client.publish(REALTIME, msg)
             time.sleep(0.01)
         time.sleep(5)
     for j in range(1, 100, 1):
-        for i in range(1, 25, 1):
+        for i in range(1, 3, 1):
             msg = realtime_pack(INSCHOOL_HOST, WRISTBAND+ " " +str(i), time_wrist)
             client.publish(REALTIME, msg)
             time.sleep(0.01)
