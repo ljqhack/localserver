@@ -67,7 +67,7 @@ def Initparam():
     global TIME_THRESHOLD
     global CHECK_NUMS
     global CHECK_TIMEOUT
-    f = codecs.open(getpwd()+"\local.conf","r","utf-8")
+    f = codecs.open(getpwd()+"/local.conf","r","utf-8")
     lines = f.readlines()
     for line in lines:
         if line[0:11] == "SignRouterA":
