@@ -73,7 +73,6 @@ def Initparam():
     f = codecs.open(getpwd()+"/local.conf","r","utf-8")
     lines = f.readlines()
     for line in lines:
-        print(line)
         if line[0:11] == "SignRouterA":
             SignRouterA.append(line.split("=")[1].strip())
         elif line[0:12] == "VALIDRSSI_IN":
