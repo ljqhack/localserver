@@ -143,50 +143,56 @@ def UdpServer():
     s.close()
 
 def EveryDayTask():
-    log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"do everyday task")
-    #1'Attendance interface
-    f = urllib.request.urlopen(ATTENDANCE, timeout = 20)
-    log.debug(f.read().decode('utf-8-sig'))
-    DBclient = MongoClient(DBHOST, DBPORT)
-    #2'Handle history table
-    CursorMax = DBclient.xljy.realtime.aggregate([{"$group":{"_id":"$mac","time_max":{"$max":"$time"}}}])
-    CursorMax_list = list(CursorMax)
-    if len(CursorMax_list) != 0:
-        t_m = None
-        for t_m in CursorMax_list:
-            time_max_before = t_m["time_max"]
-            #insert history
-            history = DBclient.xljy.history.insert({"mac":t_m["_id"],"start":time_max_before + 60,"starttoend":[time_max_before + 60,int(time.mktime(datetime.date.today().timetuple())) - 60]})
-    mac = None
-    mac_list = list(DBclient.xljy.mac_list.find({"Is":1}))[0]["mac_list"]
-    for mac in mac_list:
-        if DBclient.xljy.sign_table.find({"mac":mac}).count() == 0:
-            #insert history
-            history = DBclient.xljy.history.insert({"mac":mac,"start":int(time.mktime(datetime.date.today().timetuple()))-86400,"starttoend":[int(time.mktime(datetime.date.today().timetuple()))-86400,int(time.mktime(datetime.date.today().timetuple())) - 60]})
-    #3'Clear history/sign_table/realtime
-    ret = DBclient.xljy.history.delete_many({"start":{"$lte":int(time.mktime(datetime.date.today().timetuple())) - 86400*7 } })
-    if ret:
-        log.debug("EveryDayTask: Clear DB Collection,history!")
-    ret = DBclient.xljy.sign_table.drop()
-    if ret:
-        log.debug("EveryDayTask: Clear DB Collection,sign_table!")
-    ret = DBclient.xljy.realtime.delete_many({"time":{"$lte":int(time.mktime(datetime.date.today().timetuple())) } })
-    if ret:
-        log.debug("EveryDayTask: Clear DB Collection,realtime!")
+    try:
+        log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"do everyday task")
+        #1'Attendance interface
+        f = urllib.request.urlopen(ATTENDANCE, timeout = 20)
+        log.debug(f.read().decode('utf-8-sig'))
+        DBclient = MongoClient(DBHOST, DBPORT)
+        #2'Handle history table
+        CursorMax = DBclient.xljy.realtime.aggregate([{"$group":{"_id":"$mac","time_max":{"$max":"$time"}}}])
+        CursorMax_list = list(CursorMax)
+        if len(CursorMax_list) != 0:
+            t_m = None
+            for t_m in CursorMax_list:
+                time_max_before = t_m["time_max"]
+                #insert history
+                history = DBclient.xljy.history.insert({"mac":t_m["_id"],"start":time_max_before + 60,"starttoend":[time_max_before + 60,int(time.mktime(datetime.date.today().timetuple())) - 60]})
+        mac = None
+        mac_list = list(DBclient.xljy.mac_list.find({"Is":1}))[0]["mac_list"]
+        for mac in mac_list:
+            if DBclient.xljy.sign_table.find({"mac":mac}).count() == 0:
+                #insert history
+                history = DBclient.xljy.history.insert({"mac":mac,"start":int(time.mktime(datetime.date.today().timetuple()))-86400,"starttoend":[int(time.mktime(datetime.date.today().timetuple()))-86400,int(time.mktime(datetime.date.today().timetuple())) - 60]})
+        #3'Clear history/sign_table/realtime
+        ret = DBclient.xljy.history.delete_many({"start":{"$lte":int(time.mktime(datetime.date.today().timetuple())) - 86400*7 } })
+        if ret:
+            log.debug("EveryDayTask: Clear DB Collection,history!")
+        ret = DBclient.xljy.sign_table.drop()
+        if ret:
+            log.debug("EveryDayTask: Clear DB Collection,sign_table!")
+        ret = DBclient.xljy.realtime.delete_many({"time":{"$lte":int(time.mktime(datetime.date.today().timetuple())) } })
+        if ret:
+            log.debug("EveryDayTask: Clear DB Collection,realtime!")
+    except:
+        log.debug(sys.exc_info())
 def CheckLeaveTask():
-    log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"CheckLeaveTask")
-    dbc = MongoClient(DBHOST, DBPORT)
-    sign = dbc.xljy.sign_table.find({"state":1})
-    sign_list = list(sign)
-    cur = None
-    for cur in sign_list:
-        now = int(time.time())
-        if now - cur["time"] > TIME_THRESHOLD:
-            SendToRemote(now, cur["mac"], 1)
-            fil = {"mac":cur["mac"]}
-            up = {"$set":{"time":int(time.time()), "state":0}}
-            dbc.xljy.sign_table.find_one_and_update(fil, up)
-            log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +  "%s leave school",cur["mac"])
+    try:
+        log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"CheckLeaveTask")
+        dbc = MongoClient(DBHOST, DBPORT)
+        sign = dbc.xljy.sign_table.find({"state":1})
+        sign_list = list(sign)
+        cur = None
+        for cur in sign_list:
+            now = int(time.time())
+            if now - cur["time"] > TIME_THRESHOLD:
+                SendToRemote(now, cur["mac"], 1)
+                fil = {"mac":cur["mac"]}
+                up = {"$set":{"time":int(time.time()), "state":0}}
+                dbc.xljy.sign_table.find_one_and_update(fil, up)
+                log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +  "%s leave school",cur["mac"])
+    except:
+        log.debug(sys.exc_info())
 def Task():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"Init EveryDayTask")
     schedule.every().day.at("00:10").do(EveryDayTask)
