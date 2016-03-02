@@ -315,10 +315,11 @@ def isOutschoolMac(mac):
             return True
     return False
 
-def gethistory_pack(watchaddress,history):
+def gethistory_pack(watchaddress,broadcastaddress,history):
     param = {}
     param["type"] = "gethistory"
     param["watchaddress"] = watchaddress
+    param["broadcastaddress"] = broadcastaddress
     param["total"] = len(history)
     param["history"] = history
     json_param = json.dumps(param)
@@ -370,6 +371,7 @@ def on_message(client, userdata, msg):
                 mac = data_json["data"][0]["address"]
                 time_wrist = data_json["data"][0]["time"]
                 data_msg = data_json["data"][0]
+                broadcastaddress = data_json["data"][0]["broadcastaddress"]
                 SignFlag = False
                 if ( isInschoolMac( hostaddress ) ) and (abs(rssi) < VALIDRSSI_IN):
                     fil = {"mac":mac}
@@ -393,7 +395,7 @@ def on_message(client, userdata, msg):
                         dtob = []
                         for x in datatobase_list:
                             dtob.append(x["starttoend"])
-                        json_data = gethistory_pack(mac, dtob)
+                        json_data = gethistory_pack(mac, broadcastaddress, dtob)
                         log.debug("get history: %s", json_data)
                         client.publish("GETHISTORY", json_data)
                     if cursor != None:
