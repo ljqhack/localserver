@@ -325,7 +325,7 @@ def gethistory_pack(watchaddress,broadcastaddress,history):
     json_param = json.dumps(param)
     return json_param
 def historytoremote_pack(mac, start, end, data):
-    if len(data) != ((end - start)/60 + 1):
+    if len(data) != int((end - start)/60 + 1):
         log.debug("history package is bad!!")
         return False
     param = []
@@ -446,7 +446,8 @@ def on_message(client, userdata, msg):
                 data = data_json["data"]
                 log.debug("Receive a history msg, mac:%s  start:%d  end:%d", mac, start, end)
                 ret = DBclient.xljy.history.find_one_and_delete({"mac":mac, "start":start})
-                if ret != None:
+                #if ret != None:
+                if True:
                     params = historytoremote_pack(mac, start, end, data)
                     if params:
                         f = urllib.request.urlopen(RemoteServer + COMPLEMENT, params, timeout = 20)
