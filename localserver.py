@@ -294,10 +294,11 @@ def isOutschoolMac(mac):
             return True
     return False
 
-def gethistory_pack(watchaddress,history):
+def gethistory_pack(watchaddress, broadcastaddress, history):
     param = {}
     param["type"] = "gethistory"
     param["watchaddress"] = watchaddress
+    param["broadcastaddress"] = broadcastaddress
     param["total"] = len(history)
     param["history"] = history
     json_param = json.dumps(param)
@@ -346,6 +347,7 @@ def on_message(client, userdata, msg):
                 timestamp_today = int(time.mktime(datetime.date.today().timetuple()))
                 mac = data_json["data"][0]["address"]
                 time_wrist = data_json["data"][0]["time"]
+                broadcastaddress = data_json["data"][0]["broadcastaddress"]
                 if ( isInschoolMac(data_json["hostaddress"]) ) and (abs(data_json["rssi"]) < VALIDRSSI_IN):
                     cursor = DBclient.xljy.sign_table.find_one({"mac":mac})
                     if cursor == None:
@@ -365,7 +367,7 @@ def on_message(client, userdata, msg):
                         dtob = []
                         for x in datatobase_list:
                             dtob.append(x["starttoend"])
-                        json_data = gethistory_pack(mac, dtob)
+                        json_data = gethistory_pack(mac, broadcastaddress, dtob)
                         log.debug("get history: %s", json_data)
                         client.publish("GETHISTORY", json_data)
                 elif (isOutschoolMac(data_json["hostaddress"])) and (abs(data_json["rssi"]) < VALIDRSSI_OUT):
