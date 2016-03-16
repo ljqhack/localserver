@@ -176,9 +176,19 @@ def EveryDayTask():
             log.debug("EveryDayTask: Clear DB Collection,realtime!")
     except:
         log.debug(sys.exc_info())
+def SendTime():
+    client = mqtt.Client()
+    client.connect(MQHOST, MQPORT, 60)
+    data = {}
+    data["timestring"] = time.strftime( ISOTIMEFORMAT, time.localtime())
+    data["timestamp"] = str( int(time.time()) )
+    data = json.dumps(data)
+    client.publish("CLOCK", data)
+    
 def CheckLeaveTask():
     try:
         log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"CheckLeaveTask")
+        SendTime()
         dbc = MongoClient(DBHOST, DBPORT)
         sign = dbc.xljy.sign_table.find({"state":1})
         sign_list = list(sign)
