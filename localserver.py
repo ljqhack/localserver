@@ -173,9 +173,24 @@ def EveryDayTask():
     ret = DBclient.xljy.realtime.delete_many({"time":{"$lte":int(time.mktime(datetime.date.today().timetuple())) } })
     if ret:
         log.debug("EveryDayTask: Clear DB Collection,realtime!")
+        
+def SendTime():
+    try:
+        client = mqtt.Client()
+        client.connect(MQHOST, MQPORT, 60)
+        data = {}
+        data["timestring"] = time.strftime( ISOTIMEFORMAT, time.localtime())
+        data["timestamp"] = str( int(time.time()) )
+        data = json.dumps(data)
+        client.publish("CLOCK", data)
+    except:
+        log.debug("sendtime")
+        log.debug(sys.exc_info())
+    
 def Task():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"Init EveryDayTask")
     schedule.every().day.at("00:10").do(EveryDayTask)
+    schedule.every(10).seconds.do(SendTime)
     while True:
         schedule.run_pending()
         time.sleep(1)
@@ -318,7 +333,6 @@ def historytoremote_pack(mac, start, end, data):
     return params
     
     
-
 def on_connect(client, userdata, rc):
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " + "Connected with result code "+str(rc))
     client.subscribe("UPLOAD/#")
