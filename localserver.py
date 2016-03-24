@@ -28,6 +28,7 @@ RemoteServer = 'http://xiangliang.airm2m.com/xiangliang_web/api.php?m=index'
 CMDSEND = '&a=sendstudesmove'
 CMDCHECK = '&a=sendattendance'
 CMDGETNODE = '&a=getnode'
+GETBASE = '&a=getbase'
 UPSTATUS = '&a=basestationstatus'
 COMPLEMENT = '&a=complementstudesmove'
 ATTENDANCE = 'http://xiangliang.airm2m.com/xiangliang_web/attendance/index.php'
@@ -49,11 +50,50 @@ TIME_THRESHOLD = 30
 
 CalHistory = {}
 
+Sensitivity = []
 def getpwd():
     pwd = sys.path[0]
     if os.path.isfile(pwd):
         pwd = os.path.dirname(pwd)
     return pwd
+
+
+#type:1,普通   2，校内   3，校外
+#sensitivity:0,高    1，低
+def GetgArgFromRemote(schoolid):
+    global TIME_THRESHOLD
+    global SignRouterA
+    global SignRouterB
+    global Sensitivity
+    params_dict = {"schoolid":schoolid}
+    params = urllib.parse.urlencode(params_dict).encode('utf-8')
+    f = urllib.request.urlopen(RemoteServer+GETBASE, params, timeout = 20)
+    jstr=f.read().decode('utf-8-sig')
+    data = json.loads(jstr)
+    if data["state"] == "success":
+        if data["data"]["basestation"]:
+            for base in data["data"]["basestation"]:
+                SignRouterA = None
+                SignRouterB = None
+                SignRouterA = []
+                SignRouterB = []
+                if base["type"] == '2':
+                    SignRouterA.append(base["mac"])
+                elif base["type"] == '3':
+                    SignRouterB.append(base["mac"])
+                if "type" in base:
+                    base.pop("type")
+                Sensitivity.append(base)
+        if data["data"]["TIME_THRESHOLD"]:
+            TIME_THRESHOLD = data["data"]["TIME_THRESHOLD"]
+    log.debug("inschool    outschool     sensitivity    time_threshold")
+    log.debug(SignRouterA)
+    log.debug(SignRouterB)
+    log.debug(Sensitivity)
+    log.debug(TIME_THRESHOLD)
+    log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Update param from Remote Success")
+
+            
 def Initparam():
     global SignRouterA
     global SignRouterB
@@ -99,7 +139,8 @@ def Initparam():
     log.debug('START DEBUG LOG')
     log.debug(SignRouterA)
     log.debug(SignRouterB)
-    log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Init param Success")
+    log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Init param from localfile Success")
+    GetgArgFromRemote(SCHOOLID)
 
 def Initdb():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime()) + "   " + "Init db")
@@ -181,8 +222,10 @@ def SendTime():
         data = {}
         data["timestring"] = time.strftime( ISOTIMEFORMAT, time.localtime())
         data["timestamp"] = str( int(time.time()) )
+        data["sensitivity"] = Sensitivity
         data = json.dumps(data)
         client.publish("CLOCK", data)
+        log.debug("Sync Time")
     except:
         log.debug("sendtime")
         log.debug(sys.exc_info())
