@@ -72,20 +72,19 @@ def GetgArgFromRemote(schoolid):
     data = json.loads(jstr)
     if data["state"] == "success":
         if data["data"]["basestation"]:
+            SignRouterA = None
+            SignRouterB = None
+            SignRouterA = []
+            SignRouterB = []
             for base in data["data"]["basestation"]:
-                SignRouterA = None
-                SignRouterB = None
-                SignRouterA = []
-                SignRouterB = []
                 if base["type"] == '2':
                     SignRouterA.append(base["mac"])
                 elif base["type"] == '3':
                     SignRouterB.append(base["mac"])
-                if "type" in base:
-                    base.pop("type")
                 Sensitivity.append(base)
+            #Sensitivity.pop("type")
         if data["data"]["TIME_THRESHOLD"]:
-            TIME_THRESHOLD = data["data"]["TIME_THRESHOLD"]
+            TIME_THRESHOLD = int(data["data"]["TIME_THRESHOLD"])
     log.debug("inschool    outschool     sensitivity    time_threshold")
     log.debug(SignRouterA)
     log.debug(SignRouterB)
@@ -216,15 +215,20 @@ def EveryDayTask():
         log.debug("EveryDayTask: Clear DB Collection,realtime!")
         
 def SendTime():
+    global Sensitivity
     try:
         client = mqtt.Client()
         client.connect(MQHOST, MQPORT, 60)
         data = {}
         data["timestring"] = time.strftime( ISOTIMEFORMAT, time.localtime())
         data["timestamp"] = str( int(time.time()) )
-        data["sensitivity"] = Sensitivity
         data = json.dumps(data)
         client.publish("CLOCK", data)
+        for item in Sensitivity:
+            topic = "SENSITIVITY/" + item["mac"]
+            content = {"sensitivity":item["sensitivity"], "type":item["type"]}
+            data = json.dumps(content)
+            client.publish(topic, data)
         log.debug("Sync Time")
     except:
         log.debug("sendtime")
@@ -233,7 +237,7 @@ def SendTime():
 def Task():
     log.debug(time.strftime( ISOTIMEFORMAT, time.localtime())+"   " +"Init EveryDayTask")
     schedule.every().day.at("00:10").do(EveryDayTask)
-    schedule.every(10).seconds.do(SendTime)
+    schedule.every(30).seconds.do(SendTime)
     while True:
         schedule.run_pending()
         time.sleep(1)
@@ -319,8 +323,10 @@ def CheckDo(routertime, mac, state):
 def LeaveCheckFunc(mac):
     dc = MongoClient(DBHOST, DBPORT)
     c = dc.xljy.sign_table.find_one({"mac":mac})
-    if int(time.time()) - c["time"] > TIME_THRESHOLD:
+    if int(time.time()) - int(c["time"]) > TIME_THRESHOLD:
         SendToRemote(int(time.time()), mac, 1)
+        fil = {"mac":c["mac"]}
+        dc.xljy.sign_table.delete_many(fil)
         TimerDict.pop(mac,None)
         TimerConstant.pop(mac,None)
     else:
