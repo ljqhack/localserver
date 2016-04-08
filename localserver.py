@@ -226,7 +226,7 @@ def SendTime():
         client.publish("CLOCK", data)
         for item in Sensitivity:
             topic = "SENSITIVITY/" + item["mac"]
-            content = {"sensitivity":item["sensitivity"], "type":item["type"]}
+            content = {"sensitivity":int(item["sensitivity"]), "type":int(item["type"])}
             data = json.dumps(content)
             client.publish(topic, data)
         log.debug("Sync Time")
