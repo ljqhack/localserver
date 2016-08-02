@@ -1,0 +1,275 @@
+#! /usr/bin/python3
+# -*- coding: utf-8 -*- 
+# mqtt-turtle
+# python3
+# xc 20150521 raidercodebear@gmail.com
+# a mqtt benchmark tool
+
+'''
+The sender will keep creating mqtt clients according to your settings.
+Each client will send a message to the host periodically until they complete the whole task.
+Please provide different ids with -n if you are running multiple instances of this program.
+When all senders finish, give the receiver some ctrl-c to see the result.
+'''
+import sys
+import time
+import signal
+import pyev
+import argparse
+import paho.mqtt.client as mqtt
+import logging
+import json
+import datetime
+
+
+
+logging.basicConfig(level = logging.DEBUG)
+DBG = logging.debug
+
+def print_execption_info():
+    msg = "%r\n%s" % (type(sys.exc_info()[1]), sys.exc_info()[1])
+    DBG(msg)
+    return msg
+
+def save(path,data,mode):
+    file = open(path,mode)
+    file.write(data)
+    file.close( )
+
+#args
+HOST = None
+PORT = None
+CLIENT_ID_PREFIX = "mqtt-turtle"
+TOTAL_CLIENTS = 2000
+MESSAGES_SENDING_INTERVAL = 12
+TOTAL_MESSAGES_TO_SEND = 40000
+CLIENTS_CREATION_INTERVAL = 3
+CLIENTS_TO_CREATE_PER_ROUND = 100
+QOS = 0
+KEEP_ALIVE = 60
+MESSAGE_CONTENT = "mqtt-turtle message"
+TOPIC = "mqtt-turtle-topic"
+
+#
+loop = None
+client_id_count = 1
+mqtt_clients = []
+total_errors = 0
+total_try = 0
+connect_time_x = []
+connect_time_y = []
+publish_time = []
+
+def parse_arguments():
+    arguments_parser = argparse.ArgumentParser(description='get mqtt-turtle options', add_help = False)
+    arguments_parser.add_argument('--help', action = "help")
+    arguments_parser.add_argument('-h', metavar = 'xxx.xxx.xxx.xxx', type = str, help = 'host', dest = 'host', required = True)
+    arguments_parser.add_argument('-p', metavar = 'number', type = int, help = 'port', dest = 'port', default = 1883, required = False)
+    arguments_parser.add_argument('-c', metavar = 'number', type = int, help = 'total clients to create', dest = 'total_clients', required = True)
+    arguments_parser.add_argument('-m', metavar = 'number', type = int, help = 'total messages to send', dest = 'total_messages_to_send', required = True)
+    arguments_parser.add_argument('-i', metavar = 'number', type = int, help = 'messages sending interval(seconds)(defaut 10)', dest = 'messages_sending_interval', default = 10, required = False)
+    arguments_parser.add_argument('-n', metavar = 'mqtt-turtle', type = str, help = 'client id prefix(default "mqtt-turtle")', dest = 'client_id_prefix', default = 'mqtt-turtle', required = False)
+    arguments_parser.add_argument('-M', metavar = 'goodbye world!', type = str, help = 'message content(default "mqtt-turtle message")', dest = 'message_content', default = "mqtt-turtle message", required = False)
+    arguments_parser.add_argument('-q', metavar = '0, 1 or 2', type = int, help = 'message qos(default 0)', dest = 'qos', choices=[0, 1, 2], default = 0, required = False)
+    arguments_parser.add_argument('-I', metavar = 'number', type = int, help = 'clients creation interval(seconds)(defaut 3)', dest = 'clients_creation_interval', default = 3, required = False)
+    arguments_parser.add_argument('-k', metavar = 'number', type = int, help = 'keep alive(seconds)(default 60)', dest = 'keep_alive', default = 60, required = False)
+    arguments_parser.add_argument('-P', metavar = 'number', type = int, help = 'clients to create per round(default 50)', dest = 'clients_to_create_per_round', default = 50, required = False)
+    arguments_parser.add_argument('-t', metavar = 'topic', type = str, help = 'topic(default "mqtt-turtle-topic")', dest = 'topic', default = "mqtt-turtle-topic", required = False)
+
+    args = arguments_parser.parse_args()
+    DBG(args)
+    
+    global HOST
+    global PORT
+    global CLIENT_ID_PREFIX
+    global TOTAL_CLIENTS
+    global MESSAGES_SENDING_INTERVAL
+    global TOTAL_MESSAGES_TO_SEND
+    global CLIENTS_CREATION_INTERVAL
+    global CLIENTS_TO_CREATE_PER_ROUND
+    global QOS
+    global KEEP_ALIVE
+    global MESSAGE_CONTENT
+    global TOPIC
+    
+    HOST = args.host
+    PORT = args.port
+    CLIENT_ID_PREFIX = args.client_id_prefix
+    TOTAL_CLIENTS = args.total_clients
+    MESSAGES_SENDING_INTERVAL = args.messages_sending_interval
+    TOTAL_MESSAGES_TO_SEND = args.total_messages_to_send
+    CLIENTS_CREATION_INTERVAL = args.clients_creation_interval
+    CLIENTS_TO_CREATE_PER_ROUND = args.clients_to_create_per_round
+    QOS = args.qos
+    KEEP_ALIVE = args.keep_alive
+    MESSAGE_CONTENT = args.message_content
+    TOPIC = args.topic
+
+def send_settings():
+    try:
+        mqtt_client = mqtt.Client(client_id = CLIENT_ID_PREFIX + ' setting')
+        result = mqtt_client.connect(HOST, port = PORT, keepalive = KEEP_ALIVE)
+        if result != 0:
+            DBG("connect error")
+            return False
+        else:
+            try:
+                settings = {}
+                settings['topic'] = "/mqtt-turtle/test/data/" + TOPIC
+                settings['task'] = TOTAL_MESSAGES_TO_SEND
+                result, mid = mqtt_client.publish("/mqtt-turtle/setting", json.dumps(settings), qos = 1)
+                if result != mqtt.MQTT_ERR_SUCCESS:
+                    DBG("error result %d, mid %d" % (result, mid))
+                    return False
+            except:
+                print_execption_info()
+    except:
+        print_execption_info()
+        
+    return True
+
+def destroy_mqtt_clients():
+    global mqtt_clients
+    DBG("destroy_mqtt_clients")
+    for client in mqtt_clients:
+        try:
+            client.disconnect()
+        except:
+            print_execption_info()
+
+def send_mqtt_msg(topic, msg):
+    DBG("send_mqtt_msg")
+    global total_errors
+    global total_try
+    global publish_time
+    
+    if total_try >= TOTAL_MESSAGES_TO_SEND:
+        DBG("over")
+        return
+    for client in mqtt_clients:
+        try:
+            s_t = datetime.datetime.now()
+            result, mid = client.publish(topic, msg, qos = QOS)
+            e_t = datetime.datetime.now()
+            if result != mqtt.MQTT_ERR_SUCCESS:
+                DBG("error result %d, mid %d" % (result, mid))
+                total_errors += 1
+            d_t = (e_t - s_t)
+            del_t = (d_t.microseconds + d_t.seconds*1000000)/1000
+            publish_time.append( del_t )
+            total_try += 1
+            if total_try >= TOTAL_MESSAGES_TO_SEND:
+                #stop_all()
+                save('Publish_time.txt','-----------------%s'%time.ctime() + '\n','a')
+                save('Publish_time.txt','Publish_time = ' + str(publish_time) + '\n','a')
+                break
+        except:
+            total_errors += 1
+            print_execption_info()
+
+    DBG("total_try = %d, total_errors = %d, clients created = %d" % (total_try, total_errors, client_id_count - 1))
+
+def sig_cb(watcher, revents):
+    DBG("sig_cb")
+    stop_all()
+
+def stop_all():
+    global loop
+    # optional - stop all watchers
+    if loop.data:
+        DBG("stopping watchers: {0}".format(loop.data))
+        while loop.data:
+            loop.data.pop().stop()
+    # unloop all nested loop
+    DBG("stopping the loop: {0}".format(loop))
+    loop.stop(pyev.EVBREAK_ALL)
+    
+def client_timer_cb(watcher, revents):
+    DBG("===================== %s" % time.ctime())
+    watcher.data += 1
+    #DBG("timer.data: {0}".format(watcher.data))
+    #DBG("timer.loop.iteration: {0}".format(watcher.loop.iteration))
+    #DBG("timer.loop.now(): {0}".format(watcher.loop.now()))
+    
+    global client_id_count
+
+    if client_id_count > TOTAL_CLIENTS:
+        return
+
+    for i in range(0, CLIENTS_TO_CREATE_PER_ROUND):
+        try:
+            mqtt_client = mqtt.Client(client_id = CLIENT_ID_PREFIX + ' no.%d' % client_id_count)
+            s_t = datetime.datetime.now()
+            result = mqtt_client.connect(HOST, port = PORT, keepalive = KEEP_ALIVE)
+            e_t = datetime.datetime.now()
+            if result != 0:
+                DBG("connect error")
+                i -= 1
+            else:
+                d_t = (e_t - s_t)
+                del_t = (d_t.microseconds + d_t.seconds*1000000)/1000
+                connect_time_y.append(del_t)
+                mqtt_clients.append(mqtt_client)
+                client_id_count += 1
+                
+                if client_id_count > TOTAL_CLIENTS:
+                    DBG("clients creation over")
+                    watcher.stop()
+                    save('connect_time.txt','-----------------%s'%time.ctime() + '\n','a')
+                    save('connect_time.txt','connect_time = ' + str(connect_time_y) + '\n','a')
+                    #plt.plot(connect_time_x, connect_time_y)
+                    #plt.show()
+                    break
+        except:
+            print_execption_info()
+
+    DBG("%d clients have been created so far" % (client_id_count - 1))
+
+def message_timer_cb(watcher, revents):
+    DBG("===================== %s" % time.ctime())
+    watcher.data += 1
+    #DBG("timer.data: {0}".format(watcher.data))
+    #DBG("timer.loop.iteration: {0}".format(watcher.loop.iteration))
+    #DBG("timer.loop.now(): {0}".format(watcher.loop.now()))
+    
+    try:
+        send_mqtt_msg("/mqtt-turtle/test/data/" + TOPIC, MESSAGE_CONTENT)
+    except:
+        error = "message_timer_cb\n" + print_execption_info()
+
+def start():
+    global loop
+    try:
+        parse_arguments()
+        
+        if not send_settings():
+            DBG("send_settings error")
+            exit()
+        else:
+            DBG("send_settings ok")
+        
+        loop = pyev.default_loop()
+        # initialise and start a repeating timer
+        
+        client_timer = loop.timer(0, CLIENTS_CREATION_INTERVAL, client_timer_cb, 0)
+        client_timer.start()
+        
+        message_timer = loop.timer(0, MESSAGES_SENDING_INTERVAL, message_timer_cb, 0)
+        message_timer.start()
+
+        # initialise and start a Signal watcher
+        sig = loop.signal(signal.SIGINT, sig_cb)
+        sig.start()
+        
+        loop.data = [client_timer, message_timer, sig] # optional
+        # now wait for events to arrive
+        loop.start()
+
+    except:
+        error = "start()\n" + print_execption_info()
+    finally:
+        destroy_mqtt_clients()
+        DBG("mqtt-turtle over")
+        
+if __name__ == "__main__":
+    start()
